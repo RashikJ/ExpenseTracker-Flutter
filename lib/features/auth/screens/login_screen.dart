@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers/auth_provider.dart';
 import '../widgets/sign_in_form.dart';
@@ -12,6 +13,12 @@ class LoginScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<User?>(currentUserProvider, (previous, next) {
+      if (previous == null && next != null && context.mounted) {
+        context.go('/expenses');
+      }
+    });
+
     final firstNameController = useTextEditingController();
     final lastNameController = useTextEditingController();
     final emailController = useTextEditingController();
@@ -194,6 +201,9 @@ class LoginScreen extends HookConsumerWidget {
     }
     if (msg.contains('already registered')) {
       return 'An account with this email already exists';
+    }
+    if (msg.contains('email not confirmed')) {
+      return 'Please confirm your email before signing in';
     }
     return 'Something went wrong. Please try again.';
   }
