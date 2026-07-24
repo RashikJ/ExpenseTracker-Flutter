@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-
+import 'package:flutter_hooks/flutter_hooks.dart';
 import '../data/expense_repository.dart';
 import '../models/expense_model.dart';
 import '../../categories/data/category_repository.dart';
@@ -113,34 +113,193 @@ class ExpenseListScreen extends HookConsumerWidget {
     final categoriesAsync = ref.watch(categoriesStreamProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
+    final selectedPeriod = useState('Month');
+    final selectedDate = useState(DateTime.now());
+
+Future<void> pickDay() async {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: selectedDate.value,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+      );
+      if (picked != null) selectedDate.value = picked;
+    }
+
+    Future<void> pickMonthYear() async {
+      var month = selectedDate.value.month;
+      var year = selectedDate.value.year;
+
+      final picked = await showDialog<DateTime>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Select month & year'),
+           content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      initialValue: month,
+                      decoration: const InputDecoration(labelText: 'Month'),
+                      items: List.generate(12, (i) => i + 1)
+                          .map(
+                            (m) => DropdownMenuItem(
+                              value: m,
+                              child: Text(
+                                DateFormat.MMMM().format(DateTime(0, m)),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => setState(() => month = value!),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      initialValue: year,
+                      decoration: const InputDecoration(labelText: 'Year'),
+                      items:
+                          List.generate(
+                                DateTime.now().year - 2020 + 1,
+                                (i) => 2020 + i,
+                              )
+                              .map(
+                                (y) =>
+                                    DropdownMenuItem(value: y, child: Text('$y')),
+                              )
+                              .toList(),
+                      onChanged: (value) => setState(() => year = value!),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () =>
+                        Navigator.of(context).pop(DateTime(year, month)),
+                    child: const Text('Apply'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (picked != null) selectedDate.value = picked;
+    }
+
+    Future<void> pickYear() async {
+      var year = selectedDate.value.year;
+
+      final picked = await showDialog<int>(
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Select year'),
+                content: DropdownButtonFormField<int>(
+                  initialValue: year,
+                  decoration: const InputDecoration(labelText: 'Year'),
+                  items:
+                      List.generate(
+                            DateTime.now().year - 2020 + 1,
+                            (i) => 2020 + i,
+                          )
+                          .map(
+                            (y) =>
+                                DropdownMenuItem(value: y, child: Text('$y')),
+                          )
+                          .toList(),
+                  onChanged: (value) => setState(() => year = value!),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(year),
+                    child: const Text('Apply'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (picked != null) selectedDate.value = DateTime(picked);
+    }
+
+    Future<void> pickDate() async {
+      switch (selectedPeriod.value) {
+        case 'Day':
+          await pickDay();
+          break;
+        case 'Month':
+          await pickMonthYear();
+          break;
+        case 'Year':
+          await pickYear();
+          break;
+      }
+    }
+
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
       body: SafeArea(
         child: expensesAsync.when(
-          data: (expenses) {
+         data: (expenses) {
             final categories = categoriesAsync.value ?? [];
-            final total = expenses.fold<double>(0, (sum, e) => sum + e.amount);
 
+            final filteredExpenses = expenses.where((e) {
+              final d = selectedDate.value;
+              switch (selectedPeriod.value) {
+                case 'Day':
+                  return e.expenseDate.year == d.year &&
+                      e.expenseDate.month == d.month &&
+                      e.expenseDate.day == d.day;
+                case 'Year':
+                  return e.expenseDate.year == d.year;
+                case 'Month':
+                default:
+                  return e.expenseDate.year == d.year &&
+                      e.expenseDate.month == d.month;
+              }
+            }).toList();
+
+            final total = filteredExpenses.fold<double>(
+              0,
+              (sum, e) => sum + e.amount,
+            );
             return CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(
+               SliverToBoxAdapter(
                   child: _Header(
                     total: total,
+                    period: selectedPeriod.value,
+                    selectedDate: selectedDate.value,
+                    onPeriodChanged: (value) => selectedPeriod.value = value,
+                    onPickDate: pickDate,
                     onSignOut: () async {
                       await ref.read(authRepositoryProvider).signOut();
                     },
                   ),
                 ),
-                if (expenses.isEmpty)
+               if (filteredExpenses.isEmpty)
                   const SliverFillRemaining(child: _EmptyState())
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
                     sliver: SliverList.separated(
-                      itemCount: expenses.length,
+                      itemCount: filteredExpenses.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
-                        final expense = expenses[index];
+                        final expense = filteredExpenses[index];
                         final category = categories
                             .where((c) => c.id == expense.categoryId)
                             .firstOrNull;
@@ -190,10 +349,33 @@ class ExpenseListScreen extends HookConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.total, required this.onSignOut});
+  const _Header({
+    required this.total,
+    required this.period,
+    required this.selectedDate,
+    required this.onPeriodChanged,
+    required this.onPickDate,
+    required this.onSignOut,
+  });
 
   final double total;
+  final String period;
+  final DateTime selectedDate;
+  final ValueChanged<String> onPeriodChanged;
+  final VoidCallback onPickDate;
   final VoidCallback onSignOut;
+
+  String get _periodLabel {
+    switch (period) {
+      case 'Day':
+        return DateFormat.yMMMd().format(selectedDate);
+      case 'Year':
+        return DateFormat.y().format(selectedDate);
+      case 'Month':
+      default:
+        return DateFormat.yMMMM().format(selectedDate);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +403,21 @@ class _Header extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              for (final option in const ['Day', 'Month', 'Year'])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(option),
+                    selected: period == option,
+                    onSelected: (_) => onPeriodChanged(option),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -247,8 +443,8 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const SizedBox(width: 6),
                     Text(
                       'TOTAL SPENT',
                       style: TextStyle(
@@ -256,6 +452,32 @@ class _Header extends StatelessWidget {
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.8,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: onPickDate,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14,
+                            color: colorScheme.onPrimary.withValues(
+                              alpha: 0.85,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _periodLabel,
+                            style: TextStyle(
+                              color: colorScheme.onPrimary.withValues(
+                                alpha: 0.85,
+                              ),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

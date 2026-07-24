@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/screens/login_screen.dart';
-import '../../features/expenses/screens/expense_list_screen.dart';
+import '../../features/home/screens/home_shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(currentUserProvider);
@@ -23,9 +23,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
-        path: '/expenses',
-        builder: (context, state) => const ExpenseListScreen(),
-      ),
+  path: '/expenses',
+  builder: (context, state) => const HomeShell(),
+),
     ],
   );
 });

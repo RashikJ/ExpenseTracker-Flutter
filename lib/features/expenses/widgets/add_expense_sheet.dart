@@ -1,3 +1,4 @@
+import 'package:expense_tracker/features/categories/data/category_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -5,7 +6,6 @@ import 'package:intl/intl.dart';
 
 import '../data/expense_repository.dart';
 import '../models/expense_model.dart';
-import '../../categories/data/category_repository.dart';
 import '../../categories/models/category_model.dart';
 
 class AddExpenseSheet extends HookConsumerWidget {
@@ -15,6 +15,9 @@ class AddExpenseSheet extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     final amountController = useTextEditingController(
       text: expense?.amount.toString() ?? '',
     );
@@ -83,7 +86,7 @@ class AddExpenseSheet extends HookConsumerWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Form(
@@ -98,14 +101,14 @@ class AddExpenseSheet extends HookConsumerWidget {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 20),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
+                    color: colorScheme.outlineVariant,
                     borderRadius: BorderRadius.circular(99),
                   ),
                 ),
               ),
               Text(
                 expense == null ? 'Add Expense' : 'Edit Expense',
-                style: Theme.of(context).textTheme.titleLarge,
+                style: theme.textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
@@ -131,11 +134,37 @@ class AddExpenseSheet extends HookConsumerWidget {
               ),
               const SizedBox(height: 16),
               categoriesAsync.when(
-                data: (categories) => _CategoryPicker(
-                  categories: categories,
-                  selectedId: selectedCategoryId.value,
-                  onChanged: (id) => selectedCategoryId.value = id,
-                ),
+                data: (categories) {
+                  ExpenseCategory? initial;
+                  for (final c in categories) {
+                    if (c.id == selectedCategoryId.value) initial = c;
+                  }
+                  return Autocomplete<ExpenseCategory>(
+                    initialValue: TextEditingValue(text: initial?.name ?? ''),
+                    displayStringForOption: (category) => category.name,
+                    optionsBuilder: (textEditingValue) {
+                      if (textEditingValue.text.isEmpty) return categories;
+                      final query = textEditingValue.text.toLowerCase();
+                      return categories.where(
+                        (category) =>
+                            category.name.toLowerCase().contains(query),
+                      );
+                    },
+                    onSelected: (category) =>
+                        selectedCategoryId.value = category.id,
+                    fieldViewBuilder:
+                        (context, controller, focusNode, onFieldSubmitted) {
+                      return TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          prefixIcon: Icon(Icons.category_outlined),
+                        ),
+                      );
+                    },
+                  );
+                },
                 loading: () => const LinearProgressIndicator(),
                 error: (_, __) => const SizedBox.shrink(),
               ),
@@ -163,7 +192,7 @@ class AddExpenseSheet extends HookConsumerWidget {
                 const SizedBox(height: 12),
                 Text(
                   errorMessage.value!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style: TextStyle(color: colorScheme.error),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -186,80 +215,5 @@ class AddExpenseSheet extends HookConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-class _CategoryPicker extends HookConsumerWidget {
-  const _CategoryPicker({
-    required this.categories,
-    required this.selectedId,
-    required this.onChanged,
-  });
-
-  final List<ExpenseCategory> categories;
-  final String? selectedId;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (categories.isEmpty) {
-      return OutlinedButton.icon(
-        onPressed: () => _showCreateCategoryDialog(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Create your first category'),
-      );
-    }
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ...categories.map((category) {
-          final isSelected = category.id == selectedId;
-          return ChoiceChip(
-            label: Text(category.name),
-            selected: isSelected,
-            onSelected: (_) => onChanged(category.id),
-          );
-        }),
-        ActionChip(
-          avatar: const Icon(Icons.add, size: 18),
-          label: const Text('New'),
-          onPressed: () => _showCreateCategoryDialog(context, ref),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _showCreateCategoryDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New Category'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Category name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && result.isNotEmpty) {
-      await ref.read(categoryRepositoryProvider).createCategory(name: result);
-    }
   }
 }
