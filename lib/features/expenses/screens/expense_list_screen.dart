@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../data/expense_repository.dart';
 import '../models/expense_model.dart';
 import '../../categories/data/category_repository.dart';
 import '../../categories/models/category_model.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../widgets/add_expense_sheet.dart';
+import 'expense_period_detail_screen.dart';
 
 class ExpenseListScreen extends HookConsumerWidget {
   const ExpenseListScreen({super.key});
@@ -105,6 +107,18 @@ class ExpenseListScreen extends HookConsumerWidget {
     );
 
     return result ?? false;
+  }
+
+  String _periodLabel(String period, DateTime selectedDate) {
+    switch (period) {
+      case 'Day':
+        return DateFormat.yMMMd().format(selectedDate);
+      case 'Year':
+        return DateFormat.y().format(selectedDate);
+      case 'Month':
+      default:
+        return DateFormat.yMMMM().format(selectedDate);
+    }
   }
 
   @override
@@ -285,6 +299,7 @@ class ExpenseListScreen extends HookConsumerWidget {
                 SliverToBoxAdapter(
                   child: _Header(
                     total: total,
+                    count: filteredExpenses.length,
                     period: selectedPeriod.value,
                     selectedDate: selectedDate.value,
                     onPeriodChanged: (value) => selectedPeriod.value = value,
@@ -294,8 +309,23 @@ class ExpenseListScreen extends HookConsumerWidget {
                     },
                   ),
                 ),
+                if (filteredExpenses.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _CategoryBreakdown(
+                      expenses: filteredExpenses,
+                      categories: categories,
+                    ),
+                  ),
                 if (recentExpenses.isEmpty)
-                  const SliverFillRemaining(child: _EmptyState())
+                  SliverFillRemaining(
+                    child: _EmptyState(
+                      isFirstTime: expenses.isEmpty,
+                      periodLabel: _periodLabel(
+                        selectedPeriod.value,
+                        selectedDate.value,
+                      ),
+                    ),
+                  )
                 else
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
@@ -329,6 +359,28 @@ class ExpenseListScreen extends HookConsumerWidget {
                       },
                     ),
                   ),
+                if (filteredExpenses.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    sliver: SliverToBoxAdapter(
+                      child: Center(
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ExpensePeriodDetailScreen(
+                                  period: selectedPeriod.value,
+                                  date: selectedDate.value,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.list_alt_rounded, size: 18),
+                          label: const Text('View all transactions'),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -351,6 +403,7 @@ class ExpenseListScreen extends HookConsumerWidget {
 class _Header extends StatelessWidget {
   const _Header({
     required this.total,
+    required this.count,
     required this.period,
     required this.selectedDate,
     required this.onPeriodChanged,
@@ -359,6 +412,7 @@ class _Header extends StatelessWidget {
   });
 
   final double total;
+  final int count;
   final String period;
   final DateTime selectedDate;
   final ValueChanged<String> onPeriodChanged;
@@ -492,6 +546,15 @@ class _Header extends StatelessWidget {
                     height: 1.1,
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  count == 1 ? '1 expense' : '$count expenses',
+                  style: TextStyle(
+                    color: colorScheme.onPrimary.withValues(alpha: 0.85),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -504,6 +567,151 @@ class _Header extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CategoryBreakdown extends StatelessWidget {
+  const _CategoryBreakdown({required this.expenses, required this.categories});
+
+  final List<Expense> expenses;
+  final List<ExpenseCategory> categories;
+
+  static const _palette = [
+    Color(0xFF0891B2),
+    Color(0xFFF97316),
+    Color(0xFF7C3AED),
+    Color(0xFF059669),
+    Color(0xFFDB2777),
+    Color(0xFFB45309),
+    Color(0xFF64748B),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final formatter = NumberFormat.currency(symbol: '₹', locale: 'en_IN');
+
+    final totals = <String, double>{};
+    for (final e in expenses) {
+      final key = e.categoryId ?? 'uncategorized';
+      totals[key] = (totals[key] ?? 0) + e.amount;
+    }
+
+    final entries = totals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    if (entries.length < 2) {
+      // Not worth showing a breakdown for a single category
+      return const SizedBox.shrink();
+    }
+
+    final grandTotal = entries.fold<double>(0, (s, e) => s + e.value);
+
+    String nameFor(String categoryId) {
+      if (categoryId == 'uncategorized') return 'Uncategorized';
+      return categories.where((c) => c.id == categoryId).firstOrNull?.name ??
+          'Uncategorized';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'By Category',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: PieChart(
+                    PieChartData(
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 24,
+                      sections: [
+                        for (var i = 0; i < entries.length; i++)
+                          PieChartSectionData(
+                            value: entries[i].value,
+                            color: _palette[i % _palette.length],
+                            radius: 20,
+                            showTitle: false,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < entries.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: _palette[i % _palette.length],
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  nameFor(entries[i].key),
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                formatter.format(entries[i].value),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (entries.length > 4) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Total: ${formatter.format(grandTotal)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -614,7 +822,10 @@ class _ExpenseTile extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.isFirstTime, required this.periodLabel});
+
+  final bool isFirstTime;
+  final String periodLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -640,14 +851,17 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'No expenses yet',
+              isFirstTime ? 'No expenses yet' : 'No expenses in $periodLabel',
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
-              'Tap the + button below to add your first expense',
+              isFirstTime
+                  ? 'Tap the + button below to add your first expense'
+                  : 'Try a different period or add a new expense',
               textAlign: TextAlign.center,
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),

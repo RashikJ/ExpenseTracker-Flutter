@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../expenses/screens/expense_list_screen.dart';
 import '../../expenses/screens/expense_history_screen.dart';
 import '../../expenses/widgets/add_expense_sheet.dart';
+import '../providers/navigation_provider.dart';
 
 class HomeShell extends HookConsumerWidget {
   const HomeShell({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final selectedIndex = useState(0);
+    final selectedIndex = ref.watch(selectedTabProvider);
     const screens = [ExpenseListScreen(), ExpenseHistoryScreen()];
 
     return Scaffold(
-      body: IndexedStack(index: selectedIndex.value, children: screens),
-      floatingActionButton: selectedIndex.value == 0
+      body: IndexedStack(index: selectedIndex, children: screens),
+      floatingActionButton: selectedIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () => showModalBottomSheet(
                 context: context,
@@ -29,8 +29,9 @@ class HomeShell extends HookConsumerWidget {
             )
           : null,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex.value,
-        onDestinationSelected: (index) => selectedIndex.value = index,
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) =>
+            ref.read(selectedTabProvider.notifier).state = index,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
