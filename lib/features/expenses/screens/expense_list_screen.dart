@@ -253,92 +253,97 @@ class ExpenseListScreen extends HookConsumerWidget {
 
     return Container(
       color: colorScheme.surfaceContainerLowest,
-    child : SafeArea(
-      child: expensesAsync.when(
-        data: (expenses) {
-          final categories = categoriesAsync.value ?? [];
+      child: SafeArea(
+        child: expensesAsync.when(
+          data: (expenses) {
+            final categories = categoriesAsync.value ?? [];
 
-          final filteredExpenses = expenses.where((e) {
-            final d = selectedDate.value;
-            switch (selectedPeriod.value) {
-              case 'Day':
-                return e.expenseDate.year == d.year &&
-                    e.expenseDate.month == d.month &&
-                    e.expenseDate.day == d.day;
-              case 'Year':
-                return e.expenseDate.year == d.year;
-              case 'Month':
-              default:
-                return e.expenseDate.year == d.year &&
-                    e.expenseDate.month == d.month;
-            }
-          }).toList();
+            final filteredExpenses = expenses.where((e) {
+              final d = selectedDate.value;
+              switch (selectedPeriod.value) {
+                case 'Day':
+                  return e.expenseDate.year == d.year &&
+                      e.expenseDate.month == d.month &&
+                      e.expenseDate.day == d.day;
+                case 'Year':
+                  return e.expenseDate.year == d.year;
+                case 'Month':
+                default:
+                  return e.expenseDate.year == d.year &&
+                      e.expenseDate.month == d.month;
+              }
+            }).toList();
 
-          final total = filteredExpenses.fold<double>(
-            0,
-            (sum, e) => sum + e.amount,
-          );
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: _Header(
-                  total: total,
-                  period: selectedPeriod.value,
-                  selectedDate: selectedDate.value,
-                  onPeriodChanged: (value) => selectedPeriod.value = value,
-                  onPickDate: pickDate,
-                  onSignOut: () async {
-                    await ref.read(authRepositoryProvider).signOut();
-                  },
-                ),
-              ),
-              if (filteredExpenses.isEmpty)
-                const SliverFillRemaining(child: _EmptyState())
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-                  sliver: SliverList.separated(
-                    itemCount: filteredExpenses.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final expense = filteredExpenses[index];
-                      final category = categories
-                          .where((c) => c.id == expense.categoryId)
-                          .firstOrNull;
-                      return _ExpenseTile(
-                        expense: expense,
-                        category: category,
-                        onLongPress: () => _showExpenseActions(
-                          context,
-                          expense,
-                          () => _showExpenseSheet(context, expense),
-                          () async {
-                            final shouldDelete = await _confirmDelete(context);
-                            if (!shouldDelete) return;
-                            await ref
-                                .read(expenseRepositoryProvider)
-                                .deleteExpense(expense.id);
-                          },
-                        ),
-                      );
+            final total = filteredExpenses.fold<double>(
+              0,
+              (sum, e) => sum + e.amount,
+            );
+            final recentExpenses = filteredExpenses.take(3).toList();
+
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _Header(
+                    total: total,
+                    period: selectedPeriod.value,
+                    selectedDate: selectedDate.value,
+                    onPeriodChanged: (value) => selectedPeriod.value = value,
+                    onPickDate: pickDate,
+                    onSignOut: () async {
+                      await ref.read(authRepositoryProvider).signOut();
                     },
                   ),
                 ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Something went wrong: $error',
-              textAlign: TextAlign.center,
+                if (recentExpenses.isEmpty)
+                  const SliverFillRemaining(child: _EmptyState())
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                    sliver: SliverList.separated(
+                      itemCount: recentExpenses.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final expense = recentExpenses[index];
+                        final category = categories
+                            .where((c) => c.id == expense.categoryId)
+                            .firstOrNull;
+                        return _ExpenseTile(
+                          expense: expense,
+                          category: category,
+                          period: selectedPeriod.value,
+                          onLongPress: () => _showExpenseActions(
+                            context,
+                            expense,
+                            () => _showExpenseSheet(context, expense),
+                            () async {
+                              final shouldDelete = await _confirmDelete(
+                                context,
+                              );
+                              if (!shouldDelete) return;
+                              await ref
+                                  .read(expenseRepositoryProvider)
+                                  .deleteExpense(expense.id);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Something went wrong: $error',
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 }
@@ -508,11 +513,13 @@ class _ExpenseTile extends StatelessWidget {
   const _ExpenseTile({
     required this.expense,
     required this.category,
+    required this.period,
     required this.onLongPress,
   });
 
   final Expense expense;
   final ExpenseCategory? category;
+  final String period;
   final VoidCallback onLongPress;
 
   Color _categoryColor(BuildContext context) {
@@ -527,9 +534,12 @@ class _ExpenseTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final formatter = NumberFormat.currency(symbol: '₹', locale: 'en_IN');
-    final dateFormatter = DateFormat.MMMd();
     final colorScheme = Theme.of(context).colorScheme;
     final accentColor = _categoryColor(context);
+
+    final subtitleTime = period == 'Day'
+        ? DateFormat.jm().format(expense.createdAt)
+        : DateFormat.MMMd().format(expense.expenseDate);
 
     return Material(
       color: Colors.transparent,
@@ -576,8 +586,8 @@ class _ExpenseTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       expense.note?.isNotEmpty == true
-                          ? '${expense.note} · ${dateFormatter.format(expense.expenseDate)}'
-                          : dateFormatter.format(expense.expenseDate),
+                          ? '${expense.note} · $subtitleTime'
+                          : subtitleTime,
                       style: TextStyle(
                         fontSize: 13,
                         color: colorScheme.onSurfaceVariant,

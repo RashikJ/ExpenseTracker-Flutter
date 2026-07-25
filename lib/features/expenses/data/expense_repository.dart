@@ -12,7 +12,7 @@ final expensesStreamProvider = StreamProvider<List<Expense>>((ref) {
       .from('expenses')
       .stream(primaryKey: ['id'])
       .eq('user_id', userId)
-      .order('expense_date', ascending: false)
+      .order('created_at', ascending: false)
       .map((rows) => rows.map(Expense.fromMap).toList());
 });
 

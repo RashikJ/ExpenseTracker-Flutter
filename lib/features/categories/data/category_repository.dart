@@ -17,19 +17,24 @@ final categoriesStreamProvider = StreamProvider<List<ExpenseCategory>>((ref) {
 });
 
 class CategoryRepository {
-  Future<void> createCategory({
-    required String name,
-    String? icon,
-    String? color,
-  }) async {
-    final userId = supabase.auth.currentUser!.id;
-    await supabase.from('categories').insert({
-      'user_id': userId,
-      'name': name,
-      'icon': icon,
-      'color': color,
-    });
-  }
+ Future<ExpenseCategory> createCategory({
+  required String name,
+  String? icon,
+  String? color,
+}) async {
+  final userId = supabase.auth.currentUser!.id;
+  final row = await supabase
+      .from('categories')
+      .insert({
+        'user_id': userId,
+        'name': name,
+        'icon': icon,
+        'color': color,
+      })
+      .select()
+      .single();
+  return ExpenseCategory.fromMap(row);
+}
 
   Future<void> deleteCategory(String id) async {
     await supabase.from('categories').delete().eq('id', id);

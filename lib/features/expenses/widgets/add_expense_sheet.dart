@@ -1,4 +1,3 @@
-import 'package:expense_tracker/features/categories/data/category_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -6,7 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../data/expense_repository.dart';
 import '../models/expense_model.dart';
-import '../../categories/models/category_model.dart';
+import '../../categories/data/category_repository.dart';
 
 class AddExpenseSheet extends HookConsumerWidget {
   const AddExpenseSheet({super.key, this.expense});
@@ -22,13 +21,19 @@ class AddExpenseSheet extends HookConsumerWidget {
       text: expense?.amount.toStringAsFixed(2) ?? '',
     );
     final noteController = useTextEditingController(text: expense?.note ?? '');
+    final categoryController = useTextEditingController(
+      text: () {
+        final categories = ref.read(categoriesStreamProvider).value ?? [];
+        final match = categories
+            .where((c) => c.id == expense?.categoryId)
+            .firstOrNull;
+        return match?.name ?? '';
+      }(),
+    );
     final formKey = useMemoized(() => GlobalKey<FormState>());
-    final selectedCategoryId = useState<String?>(expense?.categoryId);
     final selectedDate = useState(expense?.expenseDate ?? DateTime.now());
     final isLoading = useState(false);
     final errorMessage = useState<String?>(null);
-
-    final categoriesAsync = ref.watch(categoriesStreamProvider);
 
     Future<void> submit() async {
       if (!formKey.currentState!.validate()) return;
@@ -38,6 +43,22 @@ class AddExpenseSheet extends HookConsumerWidget {
 
       try {
         final repo = ref.read(expenseRepositoryProvider);
+        final categoryRepo = ref.read(categoryRepositoryProvider);
+        final categories = ref.read(categoriesStreamProvider).value ?? [];
+
+        final typedName = categoryController.text.trim();
+        final existing = categories
+            .where((c) => c.name.toLowerCase() == typedName.toLowerCase())
+            .firstOrNull;
+
+        final String categoryId;
+        if (existing != null) {
+          categoryId = existing.id;
+        } else {
+          final created = await categoryRepo.createCategory(name: typedName);
+          categoryId = created.id;
+        }
+
         final note = noteController.text.trim().isEmpty
             ? null
             : noteController.text.trim();
@@ -46,7 +67,7 @@ class AddExpenseSheet extends HookConsumerWidget {
         if (expense == null) {
           await repo.addExpense(
             amount: amount,
-            categoryId: selectedCategoryId.value,
+            categoryId: categoryId,
             note: note,
             expenseDate: selectedDate.value,
           );
@@ -54,7 +75,7 @@ class AddExpenseSheet extends HookConsumerWidget {
           await repo.updateExpense(
             id: expense!.id,
             amount: amount,
-            categoryId: selectedCategoryId.value,
+            categoryId: categoryId,
             note: note,
             expenseDate: selectedDate.value,
           );
@@ -133,40 +154,19 @@ class AddExpenseSheet extends HookConsumerWidget {
                 },
               ),
               const SizedBox(height: 16),
-              categoriesAsync.when(
-                data: (categories) {
-                  ExpenseCategory? initial;
-                  for (final c in categories) {
-                    if (c.id == selectedCategoryId.value) initial = c;
+              TextFormField(
+                controller: categoryController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  prefixIcon: Icon(Icons.category_outlined),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Category is required';
                   }
-                  return Autocomplete<ExpenseCategory>(
-                    initialValue: TextEditingValue(text: initial?.name ?? ''),
-                    displayStringForOption: (category) => category.name,
-                    optionsBuilder: (textEditingValue) {
-                      if (textEditingValue.text.isEmpty) return categories;
-                      final query = textEditingValue.text.toLowerCase();
-                      return categories.where(
-                        (category) =>
-                            category.name.toLowerCase().contains(query),
-                      );
-                    },
-                    onSelected: (category) =>
-                        selectedCategoryId.value = category.id,
-                    fieldViewBuilder:
-                        (context, controller, focusNode, onFieldSubmitted) {
-                          return TextFormField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              prefixIcon: Icon(Icons.category_outlined),
-                            ),
-                          );
-                        },
-                  );
+                  return null;
                 },
-                loading: () => const LinearProgressIndicator(),
-                error: (_, __) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 16),
               InkWell(
