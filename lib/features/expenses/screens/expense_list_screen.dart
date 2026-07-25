@@ -116,7 +116,7 @@ class ExpenseListScreen extends HookConsumerWidget {
     final selectedPeriod = useState('Month');
     final selectedDate = useState(DateTime.now());
 
-Future<void> pickDay() async {
+    Future<void> pickDay() async {
       final picked = await showDatePicker(
         context: context,
         initialDate: selectedDate.value,
@@ -137,7 +137,7 @@ Future<void> pickDay() async {
             builder: (context, setState) {
               return AlertDialog(
                 title: const Text('Select month & year'),
-           content: Column(
+                content: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<int>(
@@ -165,8 +165,10 @@ Future<void> pickDay() async {
                                 (i) => 2020 + i,
                               )
                               .map(
-                                (y) =>
-                                    DropdownMenuItem(value: y, child: Text('$y')),
+                                (y) => DropdownMenuItem(
+                                  value: y,
+                                  child: Text('$y'),
+                                ),
                               )
                               .toList(),
                       onChanged: (value) => setState(() => year = value!),
@@ -249,101 +251,94 @@ Future<void> pickDay() async {
       }
     }
 
-    return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest,
-      body: SafeArea(
-        child: expensesAsync.when(
-         data: (expenses) {
-            final categories = categoriesAsync.value ?? [];
+    return Container(
+      color: colorScheme.surfaceContainerLowest,
+    child : SafeArea(
+      child: expensesAsync.when(
+        data: (expenses) {
+          final categories = categoriesAsync.value ?? [];
 
-            final filteredExpenses = expenses.where((e) {
-              final d = selectedDate.value;
-              switch (selectedPeriod.value) {
-                case 'Day':
-                  return e.expenseDate.year == d.year &&
-                      e.expenseDate.month == d.month &&
-                      e.expenseDate.day == d.day;
-                case 'Year':
-                  return e.expenseDate.year == d.year;
-                case 'Month':
-                default:
-                  return e.expenseDate.year == d.year &&
-                      e.expenseDate.month == d.month;
-              }
-            }).toList();
+          final filteredExpenses = expenses.where((e) {
+            final d = selectedDate.value;
+            switch (selectedPeriod.value) {
+              case 'Day':
+                return e.expenseDate.year == d.year &&
+                    e.expenseDate.month == d.month &&
+                    e.expenseDate.day == d.day;
+              case 'Year':
+                return e.expenseDate.year == d.year;
+              case 'Month':
+              default:
+                return e.expenseDate.year == d.year &&
+                    e.expenseDate.month == d.month;
+            }
+          }).toList();
 
-            final total = filteredExpenses.fold<double>(
-              0,
-              (sum, e) => sum + e.amount,
-            );
-            return CustomScrollView(
-              slivers: [
-               SliverToBoxAdapter(
-                  child: _Header(
-                    total: total,
-                    period: selectedPeriod.value,
-                    selectedDate: selectedDate.value,
-                    onPeriodChanged: (value) => selectedPeriod.value = value,
-                    onPickDate: pickDate,
-                    onSignOut: () async {
-                      await ref.read(authRepositoryProvider).signOut();
+          final total = filteredExpenses.fold<double>(
+            0,
+            (sum, e) => sum + e.amount,
+          );
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _Header(
+                  total: total,
+                  period: selectedPeriod.value,
+                  selectedDate: selectedDate.value,
+                  onPeriodChanged: (value) => selectedPeriod.value = value,
+                  onPickDate: pickDate,
+                  onSignOut: () async {
+                    await ref.read(authRepositoryProvider).signOut();
+                  },
+                ),
+              ),
+              if (filteredExpenses.isEmpty)
+                const SliverFillRemaining(child: _EmptyState())
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                  sliver: SliverList.separated(
+                    itemCount: filteredExpenses.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final expense = filteredExpenses[index];
+                      final category = categories
+                          .where((c) => c.id == expense.categoryId)
+                          .firstOrNull;
+                      return _ExpenseTile(
+                        expense: expense,
+                        category: category,
+                        onLongPress: () => _showExpenseActions(
+                          context,
+                          expense,
+                          () => _showExpenseSheet(context, expense),
+                          () async {
+                            final shouldDelete = await _confirmDelete(context);
+                            if (!shouldDelete) return;
+                            await ref
+                                .read(expenseRepositoryProvider)
+                                .deleteExpense(expense.id);
+                          },
+                        ),
+                      );
                     },
                   ),
                 ),
-               if (filteredExpenses.isEmpty)
-                  const SliverFillRemaining(child: _EmptyState())
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-                    sliver: SliverList.separated(
-                      itemCount: filteredExpenses.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final expense = filteredExpenses[index];
-                        final category = categories
-                            .where((c) => c.id == expense.categoryId)
-                            .firstOrNull;
-                        return _ExpenseTile(
-                          expense: expense,
-                          category: category,
-                          onLongPress: () => _showExpenseActions(
-                            context,
-                            expense,
-                            () => _showExpenseSheet(context, expense),
-                            () async {
-                              final shouldDelete = await _confirmDelete(
-                                context,
-                              );
-                              if (!shouldDelete) return;
-                              await ref
-                                  .read(expenseRepositoryProvider)
-                                  .deleteExpense(expense.id);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Something went wrong: $error',
-                textAlign: TextAlign.center,
-              ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stack) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Something went wrong: $error',
+              textAlign: TextAlign.center,
             ),
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showExpenseSheet(context, null),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Expense'),
-      ),
+    ),
     );
   }
 }

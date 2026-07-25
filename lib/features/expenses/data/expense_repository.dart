@@ -36,19 +36,19 @@ class ExpenseRepository {
   Future<void> deleteExpense(String id) async {
     await supabase.from('expenses').delete().eq('id', id);
   }
-}
 
-Future<void> updateExpense({
-  required String id,
-  required double amount,
-  String? categoryId,
-  String? note,
-  required DateTime expenseDate,
-}) async {
-  await supabase.from('expenses').update({
-    'category_id': categoryId,
-    'amount': amount,
-    'note': note,
-    'expense_date': expenseDate.toIso8601String().split('T').first,
-  }).eq('id', id);
+  Future<void> updateExpense({
+    required String id,
+    required double amount,
+    String? categoryId,
+    String? note,
+    required DateTime expenseDate,
+  }) async {
+    await supabase.from('expenses').update({
+      'category_id': categoryId,
+      'amount': amount,
+      'note': note,
+      'expense_date': expenseDate.toIso8601String().split('T').first,
+    }).eq('id', id);
+  }
 }

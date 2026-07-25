@@ -19,7 +19,7 @@ class AddExpenseSheet extends HookConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     final amountController = useTextEditingController(
-      text: expense?.amount.toString() ?? '',
+      text: expense?.amount.toStringAsFixed(2) ?? '',
     );
     final noteController = useTextEditingController(text: expense?.note ?? '');
     final formKey = useMemoized(() => GlobalKey<FormState>());
@@ -51,7 +51,7 @@ class AddExpenseSheet extends HookConsumerWidget {
             expenseDate: selectedDate.value,
           );
         } else {
-          await updateExpense(
+          await repo.updateExpense(
             id: expense!.id,
             amount: amount,
             categoryId: selectedCategoryId.value,
@@ -154,15 +154,15 @@ class AddExpenseSheet extends HookConsumerWidget {
                         selectedCategoryId.value = category.id,
                     fieldViewBuilder:
                         (context, controller, focusNode, onFieldSubmitted) {
-                      return TextFormField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        decoration: const InputDecoration(
-                          labelText: 'Category',
-                          prefixIcon: Icon(Icons.category_outlined),
-                        ),
-                      );
-                    },
+                          return TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            decoration: const InputDecoration(
+                              labelText: 'Category',
+                              prefixIcon: Icon(Icons.category_outlined),
+                            ),
+                          );
+                        },
                   );
                 },
                 loading: () => const LinearProgressIndicator(),
